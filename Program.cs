@@ -1,0 +1,381 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+public class Program
+{
+    public static void Main()
+    {
+        var service = new TaskService();
+        var logger = new ConsoleLogger();
+
+        while (true)
+        {
+            Console.WriteLine();
+            Console.WriteLine("TaskTracker v1.0.0");
+            Console.WriteLine("----------------");
+            Console.WriteLine("1) Добавить задачу");
+            Console.WriteLine("2) Показать список задач");
+            Console.WriteLine("3) Изменить статус задачи");
+            Console.WriteLine("4) Удалить задачу");
+            Console.WriteLine("5) Редактировать задачу");
+            Console.WriteLine("6) Поиск по названию");
+            Console.WriteLine("7) Фильтр по статусу");
+            Console.WriteLine("8) Сортировка списка");
+            Console.WriteLine("9) Статистика");
+            Console.WriteLine("0) Выход");
+            Console.WriteLine("----------------");
+            Console.Write("Выберите пункт меню: ");
+            var input = Console.ReadLine()?.Trim();
+
+            if (input == "0")
+            {
+                Console.WriteLine("Выход...");
+                break;
+            }
+
+            try
+            {
+                switch (input)
+                {
+                    case "1": // Add
+                        Console.Write("Введите название задачи: ");
+                        var title = Console.ReadLine() ?? "";
+                        var task = service.Add(title);
+                        Console.WriteLine($"Задача добавлена: #{task.Id} {task.Title} [{task.Status}]");
+                        logger.Info($"ADD id={task.Id} title=\"{task.Title}\"");
+                        break;
+
+                    case "2": // List
+                        var tasks = service.GetAll();
+                        if (tasks.Count == 0)
+                            Console.WriteLine("Список задач пуст.");
+                        else
+                        {
+                            Console.WriteLine("Список задач:");
+                            foreach (var t in tasks)
+                            {
+                                Console.WriteLine($"{t.Id}. {t.Title} [{t.Status}]");
+                                if (!string.IsNullOrWhiteSpace(t.Description))
+                                    Console.WriteLine($"   Описание: {t.Description}");
+                            }
+                        }
+                        break;
+
+                    case "3": // Change status
+                        tasks = service.GetAll();
+                        if (tasks.Count == 0)
+                        {
+                            Console.WriteLine("Список задач пуст.");
+                            break;
+                        }
+                        PrintTasksShort(tasks);
+                        if (!TryReadInt("Введите Id задачи: ", out var id))
+                        {
+                            Console.WriteLine("Ошибка: Id должно быть числом.");
+                            break;
+                        }
+                        Console.WriteLine("Выберите новый статус: 0-New, 1-InProgress, 2-Done");
+                        if (!TryReadInt("Введите статус (0/1/2): ", out var statusNum) || statusNum < 0 || statusNum > 2)
+                        {
+                            Console.WriteLine("Ошибка: статус должен быть 0, 1 или 2.");
+                            break;
+                        }
+                        var newStatus = (TaskStatus)statusNum;
+                        var updated = service.ChangeStatus(id, newStatus);
+                        Console.WriteLine($"Статус изменён: #{updated.Id} {updated.Title} [{updated.Status}]");
+                        logger.Info($"STATUS id={updated.Id} newStatus={updated.Status}");
+                        break;
+
+                    case "4": // Delete
+                        tasks = service.GetAll();
+                        if (tasks.Count == 0)
+                        {
+                            Console.WriteLine("Список задач пуст.");
+                            break;
+                        }
+                        PrintTasksShort(tasks);
+                        if (!TryReadInt("Введите Id задачи для удаления: ", out id))
+                        {
+                            Console.WriteLine("Ошибка: Id должно быть числом.");
+                            break;
+                        }
+                        Console.Write("Точно удалить? (y/n): ");
+                        var answer = Console.ReadLine()?.Trim().ToLower();
+                        if (answer != "y")
+                        {
+                            Console.WriteLine("Удаление отменено.");
+                            break;
+                        }
+                        service.Delete(id);
+                        Console.WriteLine($"Задача с Id={id} удалена.");
+                        logger.Info($"DELETE id={id}");
+                        break;
+
+                    case "5": // Edit
+                        tasks = service.GetAll();
+                        if (tasks.Count == 0)
+                        {
+                            Console.WriteLine("Список задач пуст.");
+                            break;
+                        }
+                        PrintTasksShort(tasks);
+                        if (!TryReadInt("Введите Id задачи для редактирования: ", out id))
+                        {
+                            Console.WriteLine("Ошибка: Id должно быть числом.");
+                            break;
+                        }
+                        Console.Write("Введите новое название (Title): ");
+                        var newTitle = Console.ReadLine() ?? "";
+                        Console.Write("Введите новое описание (можно пусто): ");
+                        var newDescription = Console.ReadLine() ?? "";
+                        updated = service.Update(id, newTitle, newDescription);
+                        Console.WriteLine("Задача обновлена:");
+                        Console.WriteLine($"{updated.Id}. {updated.Title} [{updated.Status}]");
+                        if (!string.IsNullOrWhiteSpace(updated.Description))
+                            Console.WriteLine($"   Описание: {updated.Description}");
+                        logger.Info($"UPDATE id={updated.Id} title=\"{updated.Title}\"");
+                        break;
+
+                    case "6": // Search
+                        Console.Write("Введите текст для поиска: ");
+                        var query = Console.ReadLine() ?? "";
+                        var found = service.SearchByTitle(query);
+                        if (found.Count == 0)
+                            Console.WriteLine("Ничего не найдено.");
+                        else
+                        {
+                            Console.WriteLine("Результаты поиска:");
+                            foreach (var t in found)
+                                Console.WriteLine($"{t.Id}. {t.Title} [{t.Status}]");
+                        }
+                        logger.Info($"SEARCH query=\"{query}\" results={found.Count}");
+                        break;
+
+                    case "7": // Filter by status
+                        Console.WriteLine("Выберите статус для фильтра:");
+                        Console.WriteLine("0 - All (Показать всё)");
+                        Console.WriteLine("1 - New");
+                        Console.WriteLine("2 - InProgress");
+                        Console.WriteLine("3 - Done");
+                        if (!TryReadInt("Введите вариант (0/1/2/3): ", out var option) || option < 0 || option > 3)
+                        {
+                            Console.WriteLine("Ошибка: нужно число 0/1/2/3.");
+                            break;
+                        }
+                        TaskStatus? status = option switch
+                        {
+                            0 => null,
+                            1 => TaskStatus.New,
+                            2 => TaskStatus.InProgress,
+                            3 => TaskStatus.Done,
+                            _ => null
+                        };
+                        var filtered = service.FilterByStatus(status);
+                        if (filtered.Count == 0)
+                            Console.WriteLine("Нет задач с таким статусом.");
+                        else
+                        {
+                            Console.WriteLine("Отфильтрованный список:");
+                            foreach (var t in filtered)
+                                Console.WriteLine($"{t.Id}. {t.Title} [{t.Status}]");
+                        }
+                        logger.Info($"FILTER status={status?.ToString() ?? "All"} results={filtered.Count}");
+                        break;
+
+                    case "8": // Sort
+                        Console.WriteLine("Выберите сортировку:");
+                        Console.WriteLine("1 - по Id (по возрастанию)");
+                        Console.WriteLine("2 - по Id (по убыванию)");
+                        Console.WriteLine("3 - по статусу, затем по Id");
+                        if (!TryReadInt("Введите вариант (1/2/3): ", out option) || option < 1 || option > 3)
+                        {
+                            Console.WriteLine("Ошибка: выберите 1, 2 или 3.");
+                            break;
+                        }
+                        List<TaskItem> sorted = option switch
+                        {
+                            1 => service.SortById(true),
+                            2 => service.SortById(false),
+                            3 => service.SortByStatusThenId(),
+                            _ => service.GetAll()
+                        };
+                        Console.WriteLine("Отсортированный список:");
+                        foreach (var t in sorted)
+                            Console.WriteLine($"{t.Id}. {t.Title} [{t.Status}]");
+                        logger.Info($"SORT option={option}");
+                        break;
+
+                    case "9": // Stats
+                        var stats = service.GetStats();
+                        Console.WriteLine();
+                        Console.WriteLine("Статистика задач");
+                        Console.WriteLine("----------------");
+                        Console.WriteLine($"Всего задач: {stats.Total}");
+                        Console.WriteLine($"New: {stats.NewCount}");
+                        Console.WriteLine($"InProgress: {stats.InProgressCount}");
+                        Console.WriteLine($"Done: {stats.DoneCount}");
+                        Console.WriteLine("----------------");
+                        logger.Info($"STATS total={stats.Total}");
+                        break;
+
+                    default:
+                        Console.WriteLine("Неизвестная команда. Введите номер из меню.");
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Ошибка: {ex.Message}");
+                logger.Error(ex.Message);
+            }
+        }
+    }
+
+    static bool TryReadInt(string prompt, out int value)
+    {
+        Console.Write(prompt);
+        var text = Console.ReadLine();
+        return int.TryParse(text, out value);
+    }
+
+    static void PrintTasksShort(List<TaskItem> tasks)
+    {
+        Console.WriteLine("Список задач:");
+        foreach (var t in tasks)
+            Console.WriteLine($"{t.Id}. {t.Title} [{t.Status}]");
+    }
+}
+
+// ---------------- Модели ----------------
+public enum TaskStatus
+{
+    New,
+    InProgress,
+    Done
+}
+
+public class TaskItem
+{
+    public int Id { get; set; }
+    public string Title { get; set; } = "";
+    public string Description { get; set; } = "";
+    public TaskStatus Status { get; set; } = TaskStatus.New;
+}
+
+// ---------------- Валидатор ----------------
+public static class TaskValidator
+{
+    public const int TitleMaxLength = 50;
+    public const int DescriptionMaxLength = 300;
+
+    public static string? Validate(TaskItem task)
+    {
+        if (task == null) return "Задача не должна быть пустой (null).";
+        if (string.IsNullOrWhiteSpace(task.Title)) return "Название (Title) обязательно.";
+        if (task.Title.Trim().Length > TitleMaxLength) return $"Название слишком длинное. Максимум {TitleMaxLength} символов.";
+        if ((task.Description ?? "").Trim().Length > DescriptionMaxLength) return $"Описание слишком длинное. Максимум {DescriptionMaxLength} символов.";
+        return null;
+    }
+}
+
+// ---------------- Сервис задач ----------------
+public class TaskService
+{
+    private List<TaskItem> _tasks = new();
+    private int _nextId = 1;
+
+    public TaskItem Add(string title)
+    {
+        var task = new TaskItem { Id = _nextId, Title = title ?? "", Description = "" };
+        var error = TaskValidator.Validate(task);
+        if (error != null) throw new ArgumentException(error);
+        task.Title = task.Title.Trim();
+        _tasks.Add(task);
+        _nextId++;
+        return task;
+    }
+
+    public List<TaskItem> GetAll() => _tasks.ToList();
+
+    private TaskItem GetExisting(int id)
+    {
+        var task = _tasks.FirstOrDefault(t => t.Id == id);
+        if (task == null) throw new ArgumentException($"Задача с Id={id} не найдена.");
+        return task;
+    }
+
+    public TaskItem ChangeStatus(int id, TaskStatus newStatus)
+    {
+        var task = GetExisting(id);
+        task.Status = newStatus;
+        return task;
+    }
+
+    public void Delete(int id)
+    {
+        var task = GetExisting(id);
+        _tasks.Remove(task);
+    }
+
+    public TaskItem Update(int id, string newTitle, string newDescription)
+    {
+        var task = GetExisting(id);
+        task.Title = newTitle ?? "";
+        task.Description = newDescription ?? "";
+        var error = TaskValidator.Validate(task);
+        if (error != null) throw new ArgumentException(error);
+        task.Title = task.Title.Trim();
+        task.Description = (task.Description ?? "").Trim();
+        return task;
+    }
+
+    public List<TaskItem> SearchByTitle(string query)
+    {
+        if (string.IsNullOrWhiteSpace(query)) return GetAll();
+        return _tasks.Where(t => t.Title.Contains(query, StringComparison.OrdinalIgnoreCase)).ToList();
+    }
+
+    public List<TaskItem> FilterByStatus(TaskStatus? status)
+    {
+        if (status == null) return GetAll();
+        return _tasks.Where(t => t.Status == status).ToList();
+    }
+
+    public List<TaskItem> SortById(bool ascending = true)
+    {
+        return ascending ? _tasks.OrderBy(t => t.Id).ToList() : _tasks.OrderByDescending(t => t.Id).ToList();
+    }
+
+    public List<TaskItem> SortByStatusThenId()
+    {
+        return _tasks.OrderBy(t => t.Status).ThenBy(t => t.Id).ToList();
+    }
+
+    public TaskStats GetStats()
+    {
+        return new TaskStats
+        {
+            Total = _tasks.Count,
+            NewCount = _tasks.Count(t => t.Status == TaskStatus.New),
+            InProgressCount = _tasks.Count(t => t.Status == TaskStatus.InProgress),
+            DoneCount = _tasks.Count(t => t.Status == TaskStatus.Done)
+        };
+    }
+}
+
+// ---------------- Статистика ----------------
+public class TaskStats
+{
+    public int Total { get; set; }
+    public int NewCount { get; set; }
+    public int InProgressCount { get; set; }
+    public int DoneCount { get; set; }
+}
+
+// ---------------- Простой логгер в консоль ----------------
+public class ConsoleLogger
+{
+    public void Info(string message) => Console.WriteLine($"[INFO] {DateTime.Now:HH:mm:ss} {message}");
+    public void Error(string message) => Console.WriteLine($"[ERROR] {DateTime.Now:HH:mm:ss} {message}");
+}
