@@ -5,6 +5,9 @@
 Группа: 25ИС11Д
 Дата: 10.03.2026
 
+ ![image alt](https://github.com/123wask/TaskTracker2/blob/ca992a2a2ac05d1dc2451627ca26fffb8fd51de2/doc/1.png)
+
+
 1. Цель работы
 
     Изучить принципы непрерывной интеграции (CI) на примере GitHub Actions.
